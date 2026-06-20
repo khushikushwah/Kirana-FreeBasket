@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { X, MapPin, Search, ChevronRight, Navigation, CheckCircle2 } from "lucide-react";
 
 export type Location = {
@@ -294,3 +294,101 @@ export function LocationPicker({ open, onClose, selected, onSelect }: Props) {
     const q = query.trim().toLowerCase();
     if (!q) return LOCATIONS;
     return LOCATIONS.filter(
+      (l) =>
+        l.area.toLowerCase().includes(q) ||
+        l.city.toLowerCase().includes(q) ||
+        l.district.toLowerCase().includes(q) ||
+        l.state.toLowerCase().includes(q) ||
+        l.pincode.includes(q),
+    );
+  }, [query]);
+
+  // Pendo: debounced location search tracking
+  useEffect(() => {
+    if (!query.trim()) return;
+    const currentResults = filtered.length;
+    const timeout = setTimeout(() => {
+      if (typeof pendo !== "undefined") {
+        pendo.track("location_searched", {
+          search_query: query,
+          results_count: currentResults,
+          has_results: currentResults > 0,
+        });
+      }
+    }, 500);
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div
+        className="relative w-full md:max-w-lg max-h-[85vh] overflow-hidden rounded-t-3xl md:rounded-3xl flex flex-col"
+        style={{ background: "white" }}
+      >
+        <div className="flex items-center justify-between p-5 flex-shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
+          <div className="flex items-center gap-2">
+            <Navigation size={18} style={{ color: "var(--primary)" }} />
+            <h2 className="font-bold" style={{ fontFamily: "'Playfair Display', serif", color: "var(--foreground)" }}>Choose Location</h2>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg">
+            <X size={18} style={{ color: "var(--muted-foreground)" }} />
+          </button>
+        </div>
+
+        <div className="p-4 flex-shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted-foreground)" }} />
+            <input
+              type="text"
+              placeholder="Search area, city, state or pincode..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="w-full pl-9 pr-4 py-2.5 rounded-xl outline-none text-sm"
+              style={{ background: "var(--input-background)", color: "var(--foreground)" }}
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          {filtered.length === 0 ? (
+            <div className="text-center py-10">
+              <span className="text-4xl">📍</span>
+              <p className="mt-2 font-semibold text-sm" style={{ color: "var(--foreground)" }}>No locations found</p>
+              <p className="text-xs mt-1" style={{ color: "var(--muted-foreground)" }}>Try a different search term</p>
+            </div>
+          ) : (
+            filtered.slice(0, 50).map((loc) => (
+              <button
+                key={loc.id}
+                onClick={() => {
+                  onSelect(loc);
+                  onClose();
+                }}
+                className="w-full flex items-center gap-3 p-3 rounded-2xl text-left transition-all"
+                style={{
+                  border: selected.id === loc.id ? "2px solid var(--primary)" : "2px solid var(--border)",
+                  background: selected.id === loc.id ? "var(--secondary)" : "white",
+                }}
+              >
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: selected.id === loc.id ? "var(--primary)" : "var(--muted)", color: selected.id === loc.id ? "white" : "var(--muted-foreground)" }}>
+                  <MapPin size={16} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-sm truncate" style={{ color: "var(--foreground)" }}>{loc.area}</p>
+                  <p className="text-xs truncate" style={{ color: "var(--muted-foreground)" }}>{loc.city}, {loc.district}, {loc.state} – {loc.pincode}</p>
+                  <p className="text-xs mt-0.5" style={{ color: "var(--primary)" }}>{loc.nearbyShops.length} shops nearby</p>
+                </div>
+                {selected.id === loc.id && <CheckCircle2 size={18} style={{ color: "var(--primary)" }} />}
+                <ChevronRight size={14} style={{ color: "var(--muted-foreground)" }} />
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

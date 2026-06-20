@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { ShoppingCart } from "./components/ShoppingCart";
 import { ProductCard } from "./components/ProductCard";
 import { HeroBanner } from "./components/HeroBanner";
@@ -1193,6 +1193,26 @@ export default function App() {
     });
   }, [selectedCategory, searchQuery, selectedLocation]);
 
+  // Pendo: debounced product search tracking
+  useEffect(() => {
+    if (!searchQuery.trim()) return;
+    const currentResults = filteredProducts.length;
+    const timeout = setTimeout(() => {
+      if (typeof pendo !== "undefined") {
+        pendo.track("product_searched", {
+          search_query: searchQuery,
+          results_count: currentResults,
+          active_category: selectedCategory,
+          selected_location_area: selectedLocation.area,
+          selected_location_city: selectedLocation.city,
+          has_results: currentResults > 0,
+        });
+      }
+    }, 500);
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery]);
+
   const cartCount = cart.reduce((s, i) => s + i.qty, 0);
   const cartTotal = cart.reduce(
     (s, i) => s + i.qty * i.price,
@@ -1200,9 +1220,27 @@ export default function App() {
   );
 
   const addToCart = (product: Product) => {
+    const existing = cart.find((i) => i.id === product.id);
+
+    if (typeof pendo !== "undefined") {
+      pendo.track("product_added_to_cart", {
+        product_id: product.id,
+        product_name: product.name,
+        product_category: product.category,
+        product_price: product.price,
+        product_unit: product.unit,
+        product_shop: product.shop,
+        product_badge: product.badge || "",
+        is_first_add: !existing,
+        new_quantity: existing ? existing.qty + 1 : 1,
+        cart_total_items: cartCount + 1,
+        cart_total_value: cartTotal + product.price,
+      });
+    }
+
     setCart((prev) => {
-      const existing = prev.find((i) => i.id === product.id);
-      if (existing) {
+      const ex = prev.find((i) => i.id === product.id);
+      if (ex) {
         toast.success(`${product.name} quantity updated`);
         return prev.map((i) =>
           i.id === product.id ? { ...i, qty: i.qty + 1 } : i,
@@ -1226,11 +1264,38 @@ export default function App() {
   };
 
   const removeFromCart = (id: number) => {
+    const item = cart.find((i) => i.id === id);
+    if (item && typeof pendo !== "undefined") {
+      const remainingItems = cart.filter((i) => i.id !== id);
+      pendo.track("cart_item_removed", {
+        product_id: item.id,
+        product_name: item.name,
+        product_category: item.category,
+        product_price: item.price,
+        product_shop: item.shop,
+        quantity_at_removal: item.qty,
+        remaining_cart_items: remainingItems.reduce((s, i) => s + i.qty, 0),
+        remaining_cart_value: remainingItems.reduce((s, i) => s + i.qty * i.price, 0),
+      });
+    }
     setCart((prev) => prev.filter((i) => i.id !== id));
     toast("Item removed from cart");
   };
 
   const handlePlaceOrder = () => {
+    const deliveryFee = cartTotal > 299 ? 0 : 30;
+    if (typeof pendo !== "undefined") {
+      pendo.track("order_placed", {
+        order_total: cartTotal + deliveryFee,
+        subtotal: cartTotal,
+        delivery_fee: deliveryFee,
+        is_free_delivery: deliveryFee === 0,
+        item_count: cartCount,
+        unique_product_count: cart.length,
+        selected_location_area: selectedLocation.area,
+        selected_location_city: selectedLocation.city,
+      });
+    }
     setCart([]);
     setCheckoutOpen(false);
     setCartOpen(false);
@@ -1626,6 +1691,19 @@ export default function App() {
         onClose={() => setLocationPickerOpen(false)}
         selected={selectedLocation}
         onSelect={(loc) => {
+          if (typeof pendo !== "undefined") {
+            pendo.track("location_changed", {
+              new_location_id: loc.id,
+              new_location_area: loc.area,
+              new_location_city: loc.city,
+              new_location_state: loc.state,
+              new_location_pincode: loc.pincode,
+              previous_location_id: selectedLocation.id,
+              previous_location_area: selectedLocation.area,
+              nearby_shops_count: loc.nearbyShops.length,
+              cart_items_cleared: cartCount,
+            });
+          }
           setSelectedLocation(loc);
           setCart([]);
           setSelectedCategory("All");
@@ -1644,6 +1722,16 @@ export default function App() {
         onRemove={removeFromCart}
         total={cartTotal}
         onCheckout={() => {
+          if (typeof pendo !== "undefined") {
+            const deliveryFee = cartTotal > 299 ? 0 : 30;
+            pendo.track("checkout_initiated", {
+              cart_total_value: cartTotal,
+              cart_item_count: cartCount,
+              unique_product_count: cart.length,
+              delivery_fee: deliveryFee,
+              is_free_delivery: deliveryFee === 0,
+            });
+          }
           setCartOpen(false);
           setCheckoutOpen(true);
         }}
