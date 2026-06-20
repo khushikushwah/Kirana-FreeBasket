@@ -80,7 +80,18 @@ export function CheckoutModal({ open, onClose, cart, total, onPlaceOrder }: Prop
                 </div>
               ))}
               <button
-                onClick={() => setStep("payment")}
+                onClick={() => {
+                  if (typeof pendo !== "undefined") {
+                    pendo.track("checkout_address_submitted", {
+                      city: form.city,
+                      pincode: form.pincode,
+                      has_complete_address: Boolean(form.name && form.phone && form.address && form.city && form.pincode),
+                      cart_total_value: total,
+                      cart_item_count: cart.reduce((s, i) => s + i.qty, 0),
+                    });
+                  }
+                  setStep("payment");
+                }}
                 disabled={!form.name || !form.phone || !form.address}
                 className="w-full py-3.5 rounded-xl font-bold text-sm mt-2 transition-all active:scale-95 disabled:opacity-50"
                 style={{ background: "var(--primary)", color: "white" }}
@@ -102,7 +113,17 @@ export function CheckoutModal({ open, onClose, cart, total, onPlaceOrder }: Prop
                 ].map((opt) => (
                   <button
                     key={opt.value}
-                    onClick={() => setPaymentMethod(opt.value as "cod" | "online")}
+                    onClick={() => {
+                      if (typeof pendo !== "undefined") {
+                        pendo.track("payment_method_selected", {
+                          payment_method: opt.value,
+                          cart_total_value: total,
+                          grand_total: grandTotal,
+                          delivery_fee: deliveryFee,
+                        });
+                      }
+                      setPaymentMethod(opt.value as "cod" | "online");
+                    }}
                     className="w-full flex items-center gap-3 p-4 rounded-2xl text-left transition-all"
                     style={{
                       border: paymentMethod === opt.value ? "2px solid var(--primary)" : "2px solid var(--border)",
